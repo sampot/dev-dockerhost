@@ -1,0 +1,74 @@
+version: '2'
+networks:
+    etcd:
+    kube-api:
+services:
+    etcd:
+        image: "quay.io/coreos/etcd:v3.2"
+        networks:
+            - etcd
+        command:
+            - etcd
+            - --name=etcd0
+            - --advertise-client-urls=http://etcd:2379
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --initial-advertise-peer-urls=http://etcd:2380
+            - --initial-cluster-state=new
+        ports:
+            - 2379:2379
+    kube-apiserver:
+        image: "quay.io/coreos/hyperkube:v1.7.6_coreos.0"
+        networks:
+            - etcd
+            - kube-api
+        command:
+            - kube-apiserver
+            - --etcd-servers=http://etcd:2379
+            - --insecure_bind_address=0.0.0.0
+            - --insecure_port=8080
+            - --service-cluster-ip-range=10.244.0.0/16
+            - --allow-privileged=true
+        ports:
+            - 8080:8080
+    kubelet:
+        image: "quay.io/coreos/hyperkube:v1.7.6_coreos.0"
+        privileged: true
+        networks:
+            - kube-api
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock:rw
+            - /usr/local/lib/docker/:/usr/local/lib/docker/
+            - /proc/:/rootfs/proc/
+            - /var/lib/kubelet:/var/lib/kubelet:shared
+        command:
+            - kubelet
+            - --v=2
+            - --address=0.0.0.0
+            - --enable-server
+            - --api-servers=http://kube-apiserver:8080
+            - --port=10250
+            - --cluster-domain=cluster.local
+            - --cluster-dns=8.8.8.8
+            - --allow-privileged=true
+    kube-controller-manager:
+        image: "quay.io/coreos/hyperkube:v1.7.6_coreos.0"
+        networks:
+            - kube-api
+        command:
+            - kube-controller-manager
+            - --master=http://kube-apiserver:8080
+    kube-scheduler:
+        image: "quay.io/coreos/hyperkube:v1.7.6_coreos.0"
+        networks:
+            - kube-api
+        command:
+            - kube-scheduler
+            - --master=http://kube-apiserver:8080
+    kube-proxy:
+        image: "quay.io/coreos/hyperkube:v1.7.6_coreos.0"
+        network_mode: host
+        privileged: true
+        command:
+            - kube-proxy
+            - --master=http://localhost:8080
+            - --proxy-mode=userspace
